@@ -1,0 +1,16 @@
+.git/
+.venv/
+data/
+outputs/
+checkpoints/
+wandb/
+.env
+__pycache__/
+*.py[cod]
+*.pt
+*.pth
+*.ckpt
+*.npy
+*.npz
+*.wav
+*.flac
