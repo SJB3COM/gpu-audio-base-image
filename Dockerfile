@@ -28,4 +28,5 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
-CMD ["bash"]
+# Keep the container alive so RunPod can attach terminals and VS Code Remote SSH.
+CMD ["bash", "-lc", "sleep infinity"]
