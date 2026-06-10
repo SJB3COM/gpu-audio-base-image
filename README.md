@@ -21,6 +21,8 @@ The image is published as:
 ghcr.io/sjb3com/gpu-audio-base:latest
 ```
 
+If Docker Hub temporarily fails or rate-limits base image pulls, rerun the workflow. For more reliable pulls, add repository secrets `DOCKERHUB_USERNAME` and `DOCKERHUB_TOKEN`, then set repository variable `DOCKERHUB_LOGIN_ENABLED=true`.
+
 ## Smoke Check
 
 ```bash
