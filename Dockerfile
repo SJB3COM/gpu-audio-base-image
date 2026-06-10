@@ -20,13 +20,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libsndfile1 \
     make \
     openssh-client \
+    openssh-server \
     python3-venv \
     && rm -rf /var/lib/apt/lists/*
+
+RUN mkdir -p /run/sshd /root/.ssh \
+    && chmod 700 /root/.ssh \
+    && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config \
+    && sed -i 's/#PubkeyAuthentication yes/PubkeyAuthentication yes/' /etc/ssh/sshd_config \
+    && sed -i 's/#PasswordAuthentication yes/PasswordAuthentication no/' /etc/ssh/sshd_config
 
 COPY requirements.txt /tmp/requirements.txt
 RUN python -m pip install --upgrade pip \
     && python -m pip install -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
-# Keep the container alive so RunPod can attach terminals and VS Code Remote SSH.
-CMD ["bash", "-lc", "sleep infinity"]
+EXPOSE 22
+
+# Start sshd for VS Code/Cursor Remote SSH over exposed TCP, then keep the container alive.
+CMD ["bash", "-lc", "mkdir -p /run/sshd && /usr/sbin/sshd && sleep infinity"]

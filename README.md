@@ -6,7 +6,7 @@ It includes common Python packages such as NumPy, pandas, scikit-learn, SciPy, l
 
 No project code, datasets, checkpoints, tokens, or secrets are included.
 
-The default command keeps the container alive for hosted GPU environments that attach shells after the container starts.
+The image starts `sshd` on port 22 and keeps the container alive for hosted GPU environments that attach shells after the container starts.
 
 ## Build
 
