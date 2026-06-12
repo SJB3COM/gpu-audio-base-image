@@ -40,7 +40,7 @@ fi
 
 if [[ -n "${GITHUB_DEPLOY_KEY_B64:-}" ]]; then
   log "Installing GitHub deploy key from GITHUB_DEPLOY_KEY_B64"
-  printf '%s' "${GITHUB_DEPLOY_KEY_B64}" | base64 -d > "${GITHUB_KEY_PATH}"
+  printf '%s' "${GITHUB_DEPLOY_KEY_B64}" | tr -d '\r\n ' | base64 -d > "${GITHUB_KEY_PATH}"
   chmod 600 "${GITHUB_KEY_PATH}"
 elif [[ ! -f "${GITHUB_KEY_PATH}" ]]; then
   log "Creating GitHub deploy key: ${GITHUB_KEY_PATH}"
@@ -54,7 +54,7 @@ fi
 if [[ -f "${GITHUB_KEY_PATH}.pub" ]]; then
   chmod 644 "${GITHUB_KEY_PATH}.pub" || true
 elif [[ -f "${GITHUB_KEY_PATH}" ]]; then
-  ssh-keygen -y -f "${GITHUB_KEY_PATH}" > "${GITHUB_KEY_PATH}.pub" || true
+  ssh-keygen -y -f "${GITHUB_KEY_PATH}" > "${GITHUB_KEY_PATH}.pub" || log "Failed to derive GitHub deploy public key"
   chmod 644 "${GITHUB_KEY_PATH}.pub" || true
 fi
 
