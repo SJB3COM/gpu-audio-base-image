@@ -35,7 +35,10 @@ RUN python -m pip install --upgrade pip \
     && python -m pip install -r /tmp/requirements.txt \
     && rm -f /tmp/requirements.txt
 
+COPY gpu-startup.sh /usr/local/bin/gpu-startup.sh
+RUN chmod +x /usr/local/bin/gpu-startup.sh
+
 EXPOSE 22
 
-# Start sshd for VS Code/Cursor Remote SSH over exposed TCP, then keep the container alive.
-CMD ["bash", "-lc", "mkdir -p /run/sshd && /usr/sbin/sshd && sleep infinity"]
+# Prepare SSH/W&B/repo bootstrap for hosted GPU environments, then keep alive.
+CMD ["/usr/local/bin/gpu-startup.sh"]

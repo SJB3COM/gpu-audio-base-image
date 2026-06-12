@@ -6,7 +6,23 @@ It includes common Python packages such as NumPy, pandas, scikit-learn, SciPy, l
 
 No project code, datasets, checkpoints, tokens, or secrets are included.
 
-The image starts `sshd` on port 22 and keeps the container alive for hosted GPU environments that attach shells after the container starts.
+The image starts `sshd` on port 22, can register a team SSH public key, can optionally log in to W&B from an environment variable, and keeps the container alive for hosted GPU environments.
+
+## Startup Environment
+
+Optional environment variables:
+
+```text
+TEAM_PUBLIC_KEY=ssh-ed25519 AAAA...
+WANDB_API_KEY=...
+REPO_URL=git@github.com:SJB3COM/navy-ai.git
+BRANCH=main
+WORKDIR=/workspace/navy-ai
+AUTO_CLONE=1
+RUN_BOOTSTRAP=1
+```
+
+For private repositories, either add the printed deploy public key to GitHub Deploy Keys after startup, or provide a read-only `GITHUB_TOKEN`/`GITHUB_DEPLOY_KEY_B64` as a secret environment variable.
 
 ## Build
 
