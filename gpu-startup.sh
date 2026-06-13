@@ -1,24 +1,33 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-REPO_URL="${REPO_URL:-git@github.com:SJB3COM/navy-ai.git}"
-REPO_HTTPS_URL="${REPO_HTTPS_URL:-https://github.com/SJB3COM/navy-ai.git}"
-BRANCH="${BRANCH:-main}"
-WORKDIR="${WORKDIR:-/workspace/navy-ai}"
+WORKSPACE_ROOT="${WORKSPACE_ROOT:-/workspace}"
+DATA_DIR="${DATA_DIR:-${WORKSPACE_ROOT}/data}"
+TEAM_BOOTSTRAP_PULL="${TEAM_BOOTSTRAP_PULL:-safe}" # safe, always, never
 TEAM_PUBLIC_KEY="${TEAM_PUBLIC_KEY:-}"
-GITHUB_HOST="${GITHUB_HOST:-github.com}"
-GITHUB_KEY_PATH="${GITHUB_KEY_PATH:-/root/.ssh/github_navy_ai}"
-AUTO_CLONE="${AUTO_CLONE:-1}"
-RUN_BOOTSTRAP="${RUN_BOOTSTRAP:-1}"
+
+NAVY_AI_REPO="${NAVY_AI_REPO:-git@github.com-navy-ai:SJB3COM/navy-ai.git}"
+PREPROCESSING_REPO="${PREPROCESSING_REPO:-git@github.com-navy-ai-preprocessing:SJB3COM/navy-ai-data-preprocessing.git}"
+PREPROCESSING_DIR="${PREPROCESSING_DIR:-${WORKSPACE_ROOT}/navy-ai-data-preprocessing}"
+
+NAVY_AI_KEY_B64="${GITHUB_NAVY_AI_DEPLOY_KEY_B64:-}"
+PREPROCESSING_KEY_B64="${GITHUB_PREPROCESSING_DEPLOY_KEY_B64:-}"
 
 log() {
   echo "[gpu-startup] $*"
 }
 
-mkdir -p /run/sshd /root/.ssh /workspace
-chmod 700 /root/.ssh || true
+fail() {
+  echo "[gpu-startup] ERROR: $*" >&2
+  exit 1
+}
 
-if [[ -n "${TEAM_PUBLIC_KEY}" ]]; then
+install_public_ssh_key() {
+  if [[ -z "${TEAM_PUBLIC_KEY}" ]]; then
+    log "TEAM_PUBLIC_KEY not set; direct SSH may require manual authorized_keys setup"
+    return
+  fi
+
   touch /root/.ssh/authorized_keys
   chmod 600 /root/.ssh/authorized_keys || true
   if grep -Fxq "${TEAM_PUBLIC_KEY}" /root/.ssh/authorized_keys; then
@@ -27,122 +36,142 @@ if [[ -n "${TEAM_PUBLIC_KEY}" ]]; then
     printf '%s\n' "${TEAM_PUBLIC_KEY}" >> /root/.ssh/authorized_keys
     log "Added TEAM_PUBLIC_KEY to authorized_keys"
   fi
-else
-  log "TEAM_PUBLIC_KEY not set; direct SSH may require manual authorized_keys setup"
-fi
+}
 
-if pgrep -x sshd >/dev/null 2>&1; then
-  log "sshd already running"
-else
-  /usr/sbin/sshd
-  log "sshd started"
-fi
+start_sshd() {
+  if pgrep -x sshd >/dev/null 2>&1; then
+    log "sshd already running"
+  else
+    /usr/sbin/sshd
+    log "sshd started"
+  fi
+}
 
-if [[ -n "${GITHUB_DEPLOY_KEY_B64:-}" ]]; then
-  log "Installing GitHub deploy key from GITHUB_DEPLOY_KEY_B64"
-  printf '%s' "${GITHUB_DEPLOY_KEY_B64}" | tr -d '\r\n ' | base64 -d > "${GITHUB_KEY_PATH}"
-  chmod 600 "${GITHUB_KEY_PATH}"
-elif [[ ! -f "${GITHUB_KEY_PATH}" ]]; then
-  log "Creating GitHub deploy key: ${GITHUB_KEY_PATH}"
-  ssh-keygen -t ed25519 -C "gpu-server-github-deploy-key" -f "${GITHUB_KEY_PATH}" -N ""
-  chmod 600 "${GITHUB_KEY_PATH}"
-else
-  log "Reusing existing GitHub deploy key: ${GITHUB_KEY_PATH}"
-  chmod 600 "${GITHUB_KEY_PATH}" || true
-fi
+write_private_key() {
+  local env_name="$1"
+  local key_b64="$2"
+  local key_path="$3"
 
-if [[ -f "${GITHUB_KEY_PATH}.pub" ]]; then
-  chmod 644 "${GITHUB_KEY_PATH}.pub" || true
-elif [[ -f "${GITHUB_KEY_PATH}" ]]; then
-  ssh-keygen -y -f "${GITHUB_KEY_PATH}" > "${GITHUB_KEY_PATH}.pub" || log "Failed to derive GitHub deploy public key"
-  chmod 644 "${GITHUB_KEY_PATH}.pub" || true
-fi
+  if [[ -z "${key_b64}" ]]; then
+    fail "${env_name} is required for team workspace bootstrap"
+  fi
 
-cat > /root/.ssh/config <<EOF
-Host ${GITHUB_HOST}
-  HostName ${GITHUB_HOST}
+  printf '%s' "${key_b64}" | tr -d '\r\n ' | base64 -d > "${key_path}" || fail "failed to decode ${env_name}"
+  chmod 600 "${key_path}"
+}
+
+configure_github_ssh() {
+  local navy_key="/root/.ssh/github_navy_ai"
+  local preprocessing_key="/root/.ssh/github_navy_ai_preprocessing"
+
+  write_private_key "GITHUB_NAVY_AI_DEPLOY_KEY_B64" "${NAVY_AI_KEY_B64}" "${navy_key}"
+  write_private_key "GITHUB_PREPROCESSING_DEPLOY_KEY_B64" "${PREPROCESSING_KEY_B64}" "${preprocessing_key}"
+
+  ssh-keyscan github.com >> /root/.ssh/known_hosts 2>/dev/null || true
+  sort -u /root/.ssh/known_hosts -o /root/.ssh/known_hosts 2>/dev/null || true
+  chmod 644 /root/.ssh/known_hosts || true
+
+  cat > /root/.ssh/config <<EOF
+Host github.com-navy-ai
+  HostName github.com
   User git
-  IdentityFile ${GITHUB_KEY_PATH}
+  IdentityFile ${navy_key}
+  IdentitiesOnly yes
+
+Host github.com-navy-ai-preprocessing
+  HostName github.com
+  User git
+  IdentityFile ${preprocessing_key}
   IdentitiesOnly yes
 EOF
-chmod 600 /root/.ssh/config
+  chmod 600 /root/.ssh/config
+}
 
-if ! ssh-keygen -F "${GITHUB_HOST}" >/dev/null 2>&1; then
-  ssh-keyscan "${GITHUB_HOST}" >> /root/.ssh/known_hosts 2>/dev/null || true
-  chmod 644 /root/.ssh/known_hosts || true
-fi
-
-if [[ -f "${GITHUB_KEY_PATH}.pub" ]]; then
-  cat <<EOF
-
-[gpu-startup] GitHub deploy public key:
-------------------------------------------------------------
-$(cat "${GITHUB_KEY_PATH}.pub")
-------------------------------------------------------------
-Add this to:
-  SJB3COM/navy-ai -> Settings -> Deploy keys -> Add deploy key
-Recommended:
-  Allow write access: off
-EOF
-fi
-
-if command -v wandb >/dev/null 2>&1; then
+login_wandb() {
+  if ! command -v wandb >/dev/null 2>&1; then
+    log "wandb CLI not found"
+    return
+  fi
   if [[ -n "${WANDB_API_KEY:-}" ]]; then
     wandb login --relogin "${WANDB_API_KEY}" || log "W&B login failed"
   else
     log "WANDB_API_KEY not set; run 'wandb login' later if needed"
   fi
-else
-  log "wandb CLI not found"
-fi
-
-clone_or_update_with_ssh() {
-  if [[ -d "${WORKDIR}/.git" ]]; then
-    log "Updating existing repo: ${WORKDIR}"
-    git -C "${WORKDIR}" fetch --all --prune
-  else
-    log "Cloning repo with SSH: ${REPO_URL}"
-    mkdir -p "$(dirname "${WORKDIR}")"
-    git clone "${REPO_URL}" "${WORKDIR}"
-  fi
 }
 
-clone_or_update_with_token() {
-  local token_url
-  token_url="${REPO_HTTPS_URL/https:\/\//https:\/\/x-access-token:${GITHUB_TOKEN}@}"
-  if [[ -d "${WORKDIR}/.git" ]]; then
-    log "Updating existing repo with HTTPS token: ${WORKDIR}"
-    git -C "${WORKDIR}" fetch --all --prune
-  else
-    log "Cloning repo with HTTPS token"
-    mkdir -p "$(dirname "${WORKDIR}")"
-    git clone "${token_url}" "${WORKDIR}"
-  fi
-}
+clone_or_update() {
+  local repo_url="$1"
+  local target_dir="$2"
+  local user_name="${3:-}"
+  local user_email="${4:-}"
 
-if [[ "${AUTO_CLONE}" == "1" ]]; then
-  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
-    clone_or_update_with_token || log "Git clone/update with token failed"
-  else
-    clone_or_update_with_ssh || log "Git clone/update with SSH failed; add deploy key above, then retry manually"
-  fi
-
-  if [[ -d "${WORKDIR}/.git" ]]; then
-    cd "${WORKDIR}"
-    if git show-ref --verify --quiet "refs/heads/${BRANCH}"; then
-      git checkout "${BRANCH}" || true
+  if [[ -d "${target_dir}/.git" ]]; then
+    log "repo exists: ${target_dir}"
+    git -C "${target_dir}" fetch --all --prune || {
+      log "fetch failed: ${target_dir}"
+      return
+    }
+    if [[ "${TEAM_BOOTSTRAP_PULL}" == "always" ]]; then
+      git -C "${target_dir}" pull --ff-only || log "pull failed: ${target_dir}"
+    elif [[ "${TEAM_BOOTSTRAP_PULL}" == "safe" ]]; then
+      if [[ -z "$(git -C "${target_dir}" status --short)" ]]; then
+        git -C "${target_dir}" pull --ff-only || log "pull failed: ${target_dir}"
+      else
+        log "dirty worktree; fetched but skipped pull: ${target_dir}"
+      fi
     else
-      git checkout -B "${BRANCH}" "origin/${BRANCH}" || true
+      log "TEAM_BOOTSTRAP_PULL=${TEAM_BOOTSTRAP_PULL}; fetched but skipped pull: ${target_dir}"
     fi
-    git pull --ff-only origin "${BRANCH}" || true
-
-    if [[ "${RUN_BOOTSTRAP}" == "1" && -x "./scripts/bootstrap_competition_server.sh" ]]; then
-      ./scripts/bootstrap_competition_server.sh || log "bootstrap_competition_server.sh failed"
-    fi
+  else
+    log "cloning ${repo_url} -> ${target_dir}"
+    mkdir -p "$(dirname "${target_dir}")"
+    git clone "${repo_url}" "${target_dir}" || {
+      log "clone failed: ${target_dir}"
+      return
+    }
   fi
-else
-  log "AUTO_CLONE=0; skipping repo clone"
-fi
 
-log "Ready. Keeping container alive."
-tail -f /dev/null
+  if [[ -n "${user_name}" ]]; then
+    git -C "${target_dir}" config user.name "${user_name}"
+  fi
+  if [[ -n "${user_email}" ]]; then
+    git -C "${target_dir}" config user.email "${user_email}"
+  fi
+}
+
+bootstrap_team_workspace() {
+  mkdir -p "${WORKSPACE_ROOT}" "${DATA_DIR}"
+
+  clone_or_update "${NAVY_AI_REPO}" "${WORKSPACE_ROOT}/hothyun/navy-ai" "HotHyun" "ohsong656565@gmail.com"
+  clone_or_update "${NAVY_AI_REPO}" "${WORKSPACE_ROOT}/seayurre/navy-ai" "seayurre" "yulyul03@daum.net"
+  clone_or_update "${NAVY_AI_REPO}" "${WORKSPACE_ROOT}/ybuser/navy-ai" "ybuser" "ybuser@naver.com"
+  clone_or_update "${NAVY_AI_REPO}" "${WORKSPACE_ROOT}/k0ykwon/navy-ai" "K0ykwon" "yko081524@yonsei.ac.kr"
+  clone_or_update "${PREPROCESSING_REPO}" "${PREPROCESSING_DIR}"
+
+  cat <<EOF
+
+[gpu-startup] Team workspace ready:
+  ${WORKSPACE_ROOT}/hothyun/navy-ai
+  ${WORKSPACE_ROOT}/seayurre/navy-ai
+  ${WORKSPACE_ROOT}/ybuser/navy-ai
+  ${WORKSPACE_ROOT}/k0ykwon/navy-ai
+  ${DATA_DIR}
+  ${PREPROCESSING_DIR}
+EOF
+}
+
+main() {
+  mkdir -p /run/sshd /root/.ssh "${WORKSPACE_ROOT}"
+  chmod 700 /root/.ssh || true
+
+  install_public_ssh_key
+  start_sshd
+  configure_github_ssh
+  login_wandb
+  bootstrap_team_workspace
+
+  log "Ready. Keeping container alive."
+  tail -f /dev/null
+}
+
+main "$@"

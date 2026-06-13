@@ -6,7 +6,7 @@ It includes common Python packages such as NumPy, pandas, scikit-learn, SciPy, l
 
 No project code, datasets, checkpoints, tokens, or secrets are included.
 
-The image starts `sshd` on port 22, can register a team SSH public key, can optionally log in to W&B from an environment variable, and keeps the container alive for hosted GPU environments.
+The image starts `sshd` on port 22, can register a team SSH public key, can optionally log in to W&B from an environment variable, creates the team workspace layout, and keeps the container alive for hosted GPU environments.
 
 ## Startup Environment
 
@@ -15,15 +15,30 @@ Optional environment variables:
 ```text
 TEAM_PUBLIC_KEY=ssh-ed25519 AAAA...
 WANDB_API_KEY=...
-GITHUB_DEPLOY_KEY_B64=...
-REPO_URL=git@github.com:SJB3COM/navy-ai.git
-BRANCH=main
-WORKDIR=/workspace/navy-ai
-AUTO_CLONE=1
-RUN_BOOTSTRAP=1
+GITHUB_NAVY_AI_DEPLOY_KEY_B64=...
+GITHUB_PREPROCESSING_DEPLOY_KEY_B64=...
+WORKSPACE_ROOT=/workspace
+DATA_DIR=/workspace/data
+TEAM_BOOTSTRAP_PULL=safe
+NAVY_AI_REPO=git@github.com-navy-ai:SJB3COM/navy-ai.git
+PREPROCESSING_REPO=git@github.com-navy-ai-preprocessing:SJB3COM/navy-ai-data-preprocessing.git
+PREPROCESSING_DIR=/workspace/navy-ai-data-preprocessing
 ```
 
-For private repositories, pre-register the deploy public key in GitHub and provide the matching private key as `GITHUB_DEPLOY_KEY_B64` through the GPU provider's secret environment variables. A read-only `GITHUB_TOKEN` also works, but SSH deploy keys are preferred for this image.
+For private repositories, pre-register separate deploy public keys in GitHub and provide the matching private keys as `GITHUB_NAVY_AI_DEPLOY_KEY_B64` and `GITHUB_PREPROCESSING_DEPLOY_KEY_B64` through the GPU provider's secret environment variables.
+
+The startup script creates:
+
+```text
+/workspace/hothyun/navy-ai
+/workspace/seayurre/navy-ai
+/workspace/ybuser/navy-ai
+/workspace/k0ykwon/navy-ai
+/workspace/data
+/workspace/navy-ai-data-preprocessing
+```
+
+Each `navy-ai` clone has a local Git author configured for that teammate. Existing clean worktrees are updated with `pull --ff-only` when `TEAM_BOOTSTRAP_PULL=safe`; dirty worktrees are fetched but not pulled.
 
 ## Build
 
