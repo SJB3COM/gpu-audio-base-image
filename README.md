@@ -2,7 +2,7 @@
 
 Generic CUDA/PyTorch base image for audio and machine learning experiments.
 
-It includes common Python packages such as NumPy, pandas, scikit-learn, SciPy, librosa, soundfile, matplotlib, seaborn, Hydra, W&B, and Rich.
+It includes common Python packages such as NumPy, pandas, scikit-learn, SciPy, librosa, soundfile, matplotlib, seaborn, Hydra, W&B, and Rich. It also includes Node.js for agent and JavaScript CLIs.
 
 No project code, datasets, checkpoints, tokens, or secrets are included.
 
@@ -46,7 +46,7 @@ If Docker Hub temporarily fails or rate-limits base image pulls, rerun the workf
 
 ```bash
 docker run --rm ghcr.io/sjb3com/gpu-audio-base:latest \
-  python -c "import numpy, pandas, librosa, soundfile, wandb, hydra, torch; print('imports ok')"
+  bash -lc "python -c \"import numpy, pandas, librosa, soundfile, wandb, hydra, torch; print('imports ok')\" && node --version && npm --version"
 ```
 
 On a GPU Docker host:
