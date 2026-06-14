@@ -40,6 +40,8 @@ The startup script creates:
 
 Each `navy-ai` clone has a local Git author configured for that teammate. Existing clean worktrees are updated with `pull --ff-only` when `TEAM_BOOTSTRAP_PULL=safe`; dirty worktrees are fetched but not pulled.
 
+Python packages are installed once into the image-level Python environment at build time. Team member repositories should use the image Python directly and should not create per-repository virtual environments by default.
+
 ## Build
 
 This repository builds the image manually through GitHub Actions.
