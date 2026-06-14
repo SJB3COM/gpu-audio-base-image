@@ -7,6 +7,10 @@ on:
         description: Docker image tag
         required: true
         default: latest
+      dockerfile:
+        description: Dockerfile path
+        required: true
+        default: Dockerfile
 
 permissions:
   contents: read
@@ -50,7 +54,7 @@ jobs:
         run: |
           for attempt in 1 2 3; do
             echo "Build attempt ${attempt}/3"
-            if docker buildx build --push --tag "${{ steps.meta.outputs.image }}" .; then
+            if docker buildx build --push --file "${{ inputs.dockerfile }}" --tag "${{ steps.meta.outputs.image }}" .; then
               exit 0
             fi
             sleep $((attempt * 30))

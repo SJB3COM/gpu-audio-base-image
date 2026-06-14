@@ -72,3 +72,50 @@ On a GPU Docker host:
 docker run --gpus all --rm ghcr.io/sjb3com/gpu-audio-base:latest \
   python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
 ```
+
+## Elice Bootstrap Test Image
+
+`Dockerfile.elice-test` is a deliberately minimal CUDA/Python image used to
+test the public `navy-ai` Elice bootstrap script. It does not include PyTorch,
+project repositories, W&B login, deploy keys, or the team workspace startup
+logic.
+
+Build it through GitHub Actions:
+
+1. Open `Actions`.
+2. Select `Build Docker Image`.
+3. Click `Run workflow`.
+4. Set:
+
+```text
+tag=elice-test
+dockerfile=Dockerfile.elice-test
+```
+
+The image is published as:
+
+```text
+ghcr.io/sjb3com/gpu-audio-base:elice-test
+```
+
+RunPod test command:
+
+```bash
+docker run --gpus all --rm -it \
+  -e TEAM_USER=hothyun \
+  -e GITHUB_TOKEN='<github token>' \
+  -e WANDB_API_KEY='<wandb api key>' \
+  -e TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118 \
+  ghcr.io/sjb3com/gpu-audio-base:elice-test \
+  bash -lc 'curl -fsSL https://<your-public-cdn-host>/elice_bootstrap.sh | bash'
+```
+
+After bootstrap:
+
+```bash
+cd /workspace/hothyun/navy-ai
+make imports
+make check
+make smoke
+make doctor
+```
