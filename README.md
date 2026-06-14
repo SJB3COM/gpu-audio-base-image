@@ -105,7 +105,6 @@ docker run --gpus all --rm -it \
   -e TEAM_USER=hothyun \
   -e GITHUB_TOKEN='<github token>' \
   -e WANDB_API_KEY='<wandb api key>' \
-  -e TORCH_INDEX_URL=https://download.pytorch.org/whl/cu118 \
   ghcr.io/sjb3com/gpu-audio-base:elice-test \
   bash -lc 'curl -fsSL https://<your-public-cdn-host>/elice_bootstrap.sh | bash'
 ```

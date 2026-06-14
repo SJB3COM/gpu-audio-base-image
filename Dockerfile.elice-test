@@ -4,7 +4,7 @@
 # repositories, deploy keys, W&B login, or startup bootstrap logic. It should
 # behave like a fresh hosted GPU VS Code/SSH environment where the public
 # elice_bootstrap.sh script must create the workspace and install dependencies.
-FROM nvidia/cuda:11.8.0-cudnn8-runtime-ubuntu22.04
+FROM nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
